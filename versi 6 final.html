@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WiFi Billing Pro v6</title>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    <style>
+        :root { 
+            --primary: #2563eb; --success: #16a34a; --danger: #dc2626; --warning: #f59e0b; 
+            --bg: #f1f5f9; --card-bg: #ffffff; --text: #1e293b; --border: #e2e8f0;
+        }
+        .dark { 
+            --bg: #0f172a; --card-bg: #1e293b; --text: #f1f5f9; --border: #334155;
+        }
+        * { box-sizing: border-box; transition: background 0.2s; }
+        body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); margin: 0; padding: 10px; color: var(--text); padding-bottom: 50px; }
+        
+        .container { max-width: 600px; margin: auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+
+        /* Dashboard */
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 15px; }
+        .stat-card { padding: 12px; border-radius: 12px; color: white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .bg-pending { background: linear-gradient(135deg, #f59e0b, #d97706); }
+        .bg-income { background: linear-gradient(135deg, #22c55e, #16a34a); }
+
+        /* Tabs */
+        .tabs { position: sticky; top: 0; z-index: 100; display: flex; gap: 4px; background: var(--card-bg); padding: 6px; border-radius: 12px; margin-bottom: 15px; border: 1px solid var(--border); box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .tab-btn { flex: 1; padding: 10px 2px; border: none; background: none; cursor: pointer; font-weight: bold; color: #94a3b8; font-size: 0.8rem; border-radius: 8px; }
+        .tab-btn.active { background: var(--primary); color: white; }
+
+        .content { display: none; }
+        .content.active { display: block; }
+
+        /* Search & Filter Bar */
+        .search-row { display: flex; gap: 8px; margin-bottom: 10px; }
+        .input-box { padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card-bg); color: var(--text); outline: none; font-size: 0.9rem; }
+        .flex-1 { flex: 1; }
+        .w-80 { width: 80px; }
+
+        /* Card Pelanggan */
+        .group-title { padding: 15px 5px 8px; font-weight: bold; color: var(--primary); font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center; }
+        .customer-card { background: var(--card-bg); padding: 15px; border-radius: 12px; margin-bottom: 10px; border: 1px solid var(--border); position: relative; }
+        .card-header { display: flex; justify-content: space-between; margin-bottom: 5px; }
+        .card-name { font-weight: bold; font-size: 1.05rem; }
+        .card-price { color: var(--success); font-weight: bold; }
+        
+        .badge-due { background: var(--danger); color: white; padding: 2px 8px; border-radius: 5px; font-size: 0.7rem; font-weight: bold; margin-left: 5px; }
+
+        /* Buttons */
+        .btn { border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 0.8rem; padding: 10px; display: flex; align-items: center; justify-content: center; gap: 5px; flex: 1; }
+        .btn-pay { background: var(--success); color: white; }
+        .btn-wa { background: #25d366; color: white; flex: none; width: 45px; }
+        .btn-edit { background: #94a3b8; color: white; flex: none; width: 40px; }
+        .btn-export { background: var(--primary); color: white; padding: 5px 12px; flex: none; font-size: 0.75rem; border-radius: 6px; }
+        .btn-rollback { background: #fef3c7; color: #d97706; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h2>📡 WiFi Manager v6</h2>
+        <button onclick="toggleDark()" style="background:none; border:none; font-size:1.5rem; cursor:pointer;">🌓</button>
+    </div>
+
+    <!-- Stats Global -->
+    <div class="stats-grid">
+        <div class="stat-card bg-pending">
+            <small>Total Belum Bayar</small>
+            <div id="total-pending">Rp 0</div>
+        </div>
+        <div class="stat-card bg-income">
+            <small>Pemasukan Global</small>
+            <div id="total-income">Rp 0</div>
+        </div>
+        <div class="stat-card" style="background: #64748b; grid-column: span 2; padding: 8px 15px;">
+            <small>Pengeluaran Global</small>
+            <input type="number" id="global-expense" onchange="saveExpense()" placeholder="Input pengeluaran..." 
+                   style="width: 100%; border: none; border-radius: 6px; padding: 5px; margin-top: 5px; outline: none; font-size: 1rem;">
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+        <button class="tab-btn active" onclick="showTab('tab-billing')">Tagihan</button>
+        <button class="tab-btn" onclick="showTab('tab-history')">Riwayat</button>
+        <button class="tab-btn" onclick="showTab('tab-tools')">Pengaturan</button>
+    </div>
+
+    <!-- TAB TAGIHAN -->
+    <div id="tab-billing" class="content active">
+        <div class="search-row">
+            <input type="text" id="search-name" class="input-box flex-1" placeholder="🔍 Cari nama..." onkeyup="renderAll()">
+            <select id="filter-date" class="input-box w-80" onchange="renderAll()">
+                <option value="">Tgl</option>
+            </select>
+        </div>
+        <div id="billing-list"></div>
+    </div>
+
+    <!-- TAB RIWAYAT -->
+    <div id="tab-history" class="content">
+        <p style="font-size: 0.8rem; color: #94a3b8; text-align: center;">Riwayat dikelompokkan berdasarkan tanggal pembayaran.</p>
+        <div id="history-list"></div>
+    </div>
+
+    <!-- TAB PENGATURAN -->
+    <div id="tab-tools" class="content">
+        <div class="customer-card">
+            <h3>⚙️ Alat Manajemen</h3>
+            <button class="btn" style="background: var(--primary); color:white; width: 100%; padding: 15px;" onclick="monthlyReset()">🔄 RESET BULAN BARU<br><small>(Mulai penagihan ulang dari awal)</small></button>
+            <hr style="margin:20px 0; border:0; border-top:1px solid var(--border)">
+            <p style="font-size:0.9rem;">Import Excel (Nama, Biaya, Tanggal, Phone)</p>
+            <input type="file" id="file-excel" accept=".xlsx, .xls" style="width:100%; margin-bottom:10px;">
+            <button class="btn btn-pay" style="width:100%" onclick="handleImport()">Proses Import</button>
+        </div>
+        <div style="display:flex; gap:10px; margin-top:10px;">
+            <button class="btn btn-edit" style="width:50%" onclick="downloadBackup()">💾 Backup JSON</button>
+            <button class="btn btn-delete" style="width:50%; background:#ef4444; color:white;" onclick="clearAll()">🗑️ Reset App</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Edit -->
+<div id="editModal" class="modal" style="display:none; position:fixed; z-index:200; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6);">
+    <div style="background:var(--card-bg); margin:15% auto; padding:20px; border-radius:15px; width:90%; max-width:400px;">
+        <h3>Edit Data</h3>
+        <input type="hidden" id="edit-id">
+        <input type="text" id="edit-nama" class="input-box" style="width:100%; margin-bottom:10px;" placeholder="Nama">
+        <input type="number" id="edit-biaya" class="input-box" style="width:100%; margin-bottom:10px;" placeholder="Biaya">
+        <input type="number" id="edit-tgl" class="input-box" style="width:100%; margin-bottom:10px;" placeholder="Tanggal Tagihan (1-31)">
+        <input type="text" id="edit-phone" class="input-box" style="width:100%; margin-bottom:10px;" placeholder="WA (628xxx)">
+        <div style="display: flex; gap: 10px; margin-top: 10px;">
+            <button class="btn btn-edit" onclick="closeModal()">Batal</button>
+            <button class="btn btn-pay" onclick="saveEdit()">Simpan</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let customers = JSON.parse(localStorage.getItem('wifi_db_v6')) || [];
+    let expenses = localStorage.getItem('wifi_exp_v6') || 0;
+    document.getElementById('global-expense').value = expenses;
+
+    // Dropdown Tgl
+    const dateSelect = document.getElementById('filter-date');
+    for(let i=1; i<=31; i++) {
+        let opt = document.createElement('option');
+        opt.value = i; opt.innerHTML = i;
+        dateSelect.appendChild(opt);
+    }
+
+    function toggleDark() {
+        document.body.classList.toggle('dark');
+        localStorage.setItem('dark-mode', document.body.classList.contains('dark'));
+    }
+    if(localStorage.getItem('dark-mode') === 'true') document.body.classList.add('dark');
+
+    function saveToStorage() {
+        localStorage.setItem('wifi_db_v6', JSON.stringify(customers));
+        renderAll();
+    }
+
+    function saveExpense() {
+        localStorage.setItem('wifi_exp_v6', document.getElementById('global-expense').value);
+        renderStats();
+    }
+
+    function showTab(id) {
+        document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+        event.currentTarget.classList.add('active');
+    }
+
+    function renderStats() {
+        const pending = customers.filter(c => c.status === 'belum').reduce((s, c) => s + Number(c.jumlah), 0);
+        const income = customers.filter(c => c.status === 'sudah').reduce((s, c) => s + Number(c.jumlah), 0);
+        document.getElementById('total-pending').innerText = `Rp ${pending.toLocaleString()}`;
+        document.getElementById('total-income').innerText = `Rp ${income.toLocaleString()}`;
+    }
+
+    function renderAll() {
+        renderStats();
+        const bList = document.getElementById('billing-list');
+        const hList = document.getElementById('history-list');
+        const search = document.getElementById('search-name').value.toLowerCase();
+        const fDate = document.getElementById('filter-date').value;
+        const today = new Date().getDate();
+
+        bList.innerHTML = ''; hList.innerHTML = '';
+
+        // Tab Tagihan
+        customers.sort((a,b) => a.tgl_tagihan - b.tgl_tagihan);
+        let lastDueGroup = null;
+        customers.filter(c => c.status === 'belum').forEach(c => {
+            if (!c.nama.toLowerCase().includes(search)) return;
+            if (fDate !== "" && c.tgl_tagihan != fDate) return;
+
+            if (c.tgl_tagihan !== lastDueGroup) {
+                bList.innerHTML += `<div class="group-title"><span>📅 Jatuh Tempo Tgl ${c.tgl_tagihan}</span></div>`;
+                lastDueGroup = c.tgl_tagihan;
+            }
+
+            const isDue = c.tgl_tagihan <= today;
+            bList.innerHTML += `
+                <div class="customer-card" style="${isDue ? 'border-left:5px solid var(--danger)' : ''}">
+                    <div class="card-header">
+                        <div class="card-name">${c.nama} ${isDue ? '<span class="badge-due">TELAT/HARI INI</span>' : ''}</div>
+                        <div class="card-price">Rp ${Number(c.jumlah).toLocaleString()}</div>
+                    </div>
+                    <div class="card-actions">
+                        <button class="btn btn-pay" onclick="pay(${c.id})">Bayar</button>
+                        <button class="btn btn-wa" onclick="sendWA(${c.id})">💬</button>
+                        <button class="btn btn-edit" onclick="openModal(${c.id})">✏️</button>
+                    </div>
+                </div>`;
+        });
+
+        // Tab Riwayat (Group by Tgl Bayar)
+        const groups = {};
+        customers.filter(c => c.status === 'sudah').forEach(c => {
+            if(!groups[c.tgl_bayar]) groups[c.tgl_bayar] = [];
+            groups[c.tgl_bayar].push(c);
+        });
+
+        Object.keys(groups).sort((a,b) => new Date(b) - new Date(a)).forEach(tgl => {
+            const list = groups[tgl];
+            const totalDay = list.reduce((s,x) => s + Number(x.jumlah), 0);
+            hList.innerHTML += `
+                <div class="group-title">
+                    <span>✅ Bayar: ${tgl} (Rp ${totalDay.toLocaleString()})</span>
+                    <button class="btn-export" onclick="exportDay('${tgl}')">📥 Ekspor</button>
+                </div>`;
+            
+            list.forEach(c => {
+                hList.innerHTML += `
+                    <div class="customer-card" style="border-left:5px solid var(--success)">
+                        <div class="card-header">
+                            <div class="card-name">${c.nama}</div>
+                            <div class="card-price">Rp ${Number(c.jumlah).toLocaleString()}</div>
+                        </div>
+                        <div class="card-actions">
+                            <button class="btn btn-rollback" onclick="rollback(${c.id})">🔄 Batalkan Pembayaran</button>
+                        </div>
+                    </div>`;
+            });
+        });
+    }
+
+    // Ekspor Spesifik Per Tanggal
+    function exportDay(date) {
+        const data = customers.filter(c => c.status === 'sudah' && c.tgl_bayar === date);
+        const total = data.reduce((s, c) => s + Number(c.jumlah), 0);
+
+        const rows = data.map(c => ({
+            "Nama Pelanggan": c.nama,
+            "Tgl Jatuh Tempo": c.tgl_tagihan,
+            "Tanggal Bayar": c.tgl_bayar,
+            "Jumlah Tagihan": Number(c.jumlah)
+        }));
+
+        rows.push({}); // Baris kosong
+        rows.push({
+            "Nama Pelanggan": "TOTAL PENDAPATAN HARIAN",
+            "Jumlah Tagihan": total
+        });
+
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Laporan");
+        XLSX.writeFile(wb, `WiFi_Laporan_${date}.xlsx`);
+    }
+
+    function sendWA(id) {
+        const c = customers.find(x => x.id === id);
+        if(!c.phone) return alert("Nomor WA kosong! Edit data dulu.");
+        const msg = `Halo ${c.nama}, tagihan WiFi sebesar Rp ${Number(c.jumlah).toLocaleString()} sudah jatuh tempo tgl ${c.tgl_tagihan}. Mohon segera dibayar ya. Terima kasih.`;
+        window.open(`https://wa.me/${c.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+    }
+
+    function monthlyReset() {
+        if(confirm("Semua riwayat akan kembali ke daftar tagihan untuk bulan baru. Lanjutkan?")) {
+            customers.forEach(c => { c.status = 'belum'; c.tgl_bayar = null; });
+            saveToStorage();
+        }
+    }
+
+    function pay(id) {
+        const c = customers.find(x => x.id === id);
+        c.status = 'sudah';
+        c.tgl_bayar = new Date().toISOString().split('T')[0];
+        saveToStorage();
+    }
+
+    function rollback(id) {
+        if(confirm("Batalkan status bayar pelanggan ini?")) {
+            const c = customers.find(x => x.id === id);
+            c.status = 'belum'; c.tgl_bayar = null;
+            saveToStorage();
+        }
+    }
+
+    // Modal Edit
+    function openModal(id) {
+        const c = customers.find(x => x.id === id);
+        document.getElementById('edit-id').value = c.id;
+        document.getElementById('edit-nama').value = c.nama;
+        document.getElementById('edit-biaya').value = c.jumlah;
+        document.getElementById('edit-tgl').value = c.tgl_tagihan;
+        document.getElementById('edit-phone').value = c.phone || '';
+        document.getElementById('editModal').style.display = 'block';
+    }
+    function closeModal() { document.getElementById('editModal').style.display = 'none'; }
+    function saveEdit() {
+        const id = parseFloat(document.getElementById('edit-id').value);
+        const c = customers.find(x => x.id === id);
+        c.nama = document.getElementById('edit-nama').value;
+        c.jumlah = document.getElementById('edit-biaya').value;
+        c.tgl_tagihan = document.getElementById('edit-tgl').value;
+        c.phone = document.getElementById('edit-phone').value;
+        closeModal(); saveToStorage();
+    }
+
+    function handleImport() {
+        const file = document.getElementById('file-excel').files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const data = new Uint8Array(e.target.result);
+            const wb = XLSX.read(data, {type:'array'});
+            const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+            json.forEach(row => {
+                const nama = (row.Nama || "").toString().trim();
+                const tgl = row.Tanggal || 1;
+                if(nama && !customers.find(x => x.nama === nama && x.tgl_tagihan == tgl)) {
+                    customers.push({ id: Date.now() + Math.random(), nama, jumlah: row.Biaya || 0, tgl_tagihan: tgl, phone: (row.Phone || "").toString(), status: 'belum' });
+                }
+            });
+            saveToStorage(); alert("Berhasil diimpor!");
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    function downloadBackup() {
+        const blob = new Blob([JSON.stringify(customers)], {type:"application/json"});
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = "backup_wifi.json"; a.click();
+    }
+
+    function clearAll() { if(confirm("Hapus semua data?")) { localStorage.clear(); location.reload(); } }
+
+    renderAll();
+</script>
+</body>
+</html>
